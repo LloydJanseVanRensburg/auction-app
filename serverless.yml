@@ -1,0 +1,32 @@
+service: auction-app
+frameworkVersion: '3'
+
+provider:
+    name: aws
+    runtime: nodejs16.x
+    memorySize: 256
+    stage: ${opt:stage, 'dev'}
+    region: us-east-1
+    environment:
+        AUCTIONS_TABLE_NAME: ${self:custom.AuctionsTable.name}
+    iam:
+        role:
+            statements:
+                - ${file(iam/AuctionsTableIAM.yml):AuctionsTableIAM}
+
+resources:
+    Resources:
+        AuctionsTable: ${file(resources/AuctionsTable.yml):AuctionsTable}
+
+functions:
+    createAuction:
+        handler: src/handlers/createAuction.handler
+        events:
+            - httpApi:
+                  path: /auction
+                  method: POST
+
+custom:
+    AuctionsTable:
+        name: !Ref AuctionsTable
+        arn: !GetAtt AuctionsTable.Arn
