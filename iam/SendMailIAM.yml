@@ -1,0 +1,5 @@
+SendMailIAM:
+    Effect: Allow
+    Action:
+        - ses:SendEmail
+    Resource: ${self:custom.SendMail.arn}

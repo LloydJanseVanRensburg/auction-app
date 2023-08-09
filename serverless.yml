@@ -9,24 +9,91 @@ provider:
     region: us-east-1
     environment:
         AUCTIONS_TABLE_NAME: ${self:custom.AuctionsTable.name}
+        AUTH0_PUBLIC_KEY: ${file(secret.pem)}
+        MAIL_QUEUE_URL: ${self:custom.MailQueue.url}
     iam:
         role:
             statements:
                 - ${file(iam/AuctionsTableIAM.yml):AuctionsTableIAM}
+                - ${file(iam/SendMailIAM.yml):SendMailIAM}
+                - ${file(iam/MailQueueIAM.yml):MailQueueIAM}
+    httpApi:
+        authorizers:
+            customAuthorizer:
+                type: request
+                functionName: auth
 
 resources:
     Resources:
+        ApiGatewayRestApi:
+            Type: AWS::ApiGateway::RestApi
+            Properties:
+                Name: myRestApi
         AuctionsTable: ${file(resources/AuctionsTable.yml):AuctionsTable}
+        GatewayResponse: ${file(resources/GatewayResponse.yml):GatewayResponse}
+        AuthFailureGatewayResponse: ${file(resources/AuthFailureGatewayResponse.yml):AuthFailureGatewayResponse}
+        MailQueue: ${file(resources/MailQueue.yml):MailQueue}
+    Outputs:
+        MailQueueArn: ${file(resources/MailQueue.yml):Outputs.MailQueueArn}
+        MailQueueUrl: ${file(resources/MailQueue.yml):Outputs.MailQueueUrl}
 
 functions:
+    auth:
+        handler: src/handlers/auth.handler
     createAuction:
         handler: src/handlers/createAuction.handler
         events:
             - httpApi:
-                  path: /auction
+                  path: /auctions
                   method: POST
+                  authorizer:
+                      name: customAuthorizer
+    getAuctions:
+        handler: src/handlers/getAuctions.handler
+        events:
+            - httpApi:
+                  path: /auctions
+                  method: GET
+                  authorizer:
+                      name: customAuthorizer
+    getAuction:
+        handler: src/handlers/getAuction.handler
+        events:
+            - httpApi:
+                  path: /auctions/{id}
+                  method: GET
+                  authorizer:
+                      name: customAuthorizer
+    placeBid:
+        handler: src/handlers/placeBid.handler
+        events:
+            - httpApi:
+                  path: /auctions/{id}/bid
+                  method: PATCH
+                  authorizer:
+                      name: customAuthorizer
+    processAuctions:
+        handler: src/handlers/processAuctions.handler
+        # events:
+        #     - schedule: rate(1 minute)
+    sendMail:
+        handler: src/handlers/sendMail.handler
+        events:
+            - sqs:
+                  arn: ${self:custom.MailQueue.arn}
+                  batchSize: 1
 
 custom:
+    MailQueue:
+        name: MailQueue-${self:provider.stage}
+        arn: !GetAtt MailQueue.Arn
+        url: !Ref MailQueue
     AuctionsTable:
         name: !Ref AuctionsTable
         arn: !GetAtt AuctionsTable.Arn
+    SendMail:
+        arn: arn:aws:ses:*
+    # MailQueueVarImports:
+    #     arn: ${cf:auction-app-${self.provider.stage}.MailQueueArn}
+    #     url: ${cf:auction-app-${self.provider.stage}.MailQueueUrl}
+    
